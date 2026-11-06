@@ -3500,7 +3500,27 @@ class Calculator {
       if (v !== null && this.Form) this.Form.Set_Text(0, v);
     }
     const k = this.Form ? this.Form.Get_Read_Key() : -1;
-    if (k >= 0) { this.Key_Flag = true; this.Key_Buffer = k; this.Key_Time = Date.now(); return 0; }
+    // Fix (type-ahead): the original executed every key at once, even while a program was running
+    // or showing a PAUSE, and each key extended the PAUSE. On a touch screen a distance typed while
+    // P0 still showed the bearing was lost or landed in the wrong place. Now keys pressed while a
+    // program runs are queued and replayed when it stops at the next HLT; a key during PAUSE also
+    // ends the PAUSE. AC and HLT still act immediately.
+    if (!this.Type_Ahead) this.Type_Ahead = [];
+    const em = this.Get_Execution_Mode();
+    if (k >= 0 && (em === 1 || em === 3 || this.Type_Ahead.length) && k !== 11 && k !== 26) {
+      // keep the order: while older keys wait in the queue a new key goes behind them
+      this.Type_Ahead.push(k);
+      if (em === 3) { this.Set_Execution_Mode(1); this.Increment_Programm_Counter(); }
+      this.Key_Flag = false;
+      return 0;
+    }
+    if (k >= 0) {
+      if (k === 11) this.Type_Ahead.length = 0;
+      this.Key_Flag = true; this.Key_Buffer = k; this.Key_Time = Date.now(); return 0;
+    }
+    if (this.Type_Ahead.length && (em === 0 || em === 2)) {
+      this.Key_Flag = true; this.Key_Buffer = this.Type_Ahead.shift(); this.Key_Time = Date.now(); return 0;
+    }
     this.Key_Flag = false;
     switch (this.Get_Execution_Mode()) {
       case 0: return (Date.now() > this.Key_Time + 1000) ? 500 : 1;
